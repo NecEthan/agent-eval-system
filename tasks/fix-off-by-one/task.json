@@ -1,0 +1,8 @@
+{
+  "id": "fix-off-by-one",
+  "description": "The `calculate_average` function in `stats.py` returns incorrect results for single-element lists. Fix it so all tests pass.",
+  "source_path": "./repo",
+  "evaluation": {
+    "commands": ["python -m pytest tests/"]
+  }
+}
