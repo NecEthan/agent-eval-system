@@ -10,3 +10,4 @@ tasks/*/repo/
 # Node
 node_modules/
 package-lock.json
+ui/dist/

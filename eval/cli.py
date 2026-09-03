@@ -1,13 +1,13 @@
 """CLI entry point for the agent evaluation platform.
 
-Usage:
-    # Built-in custom harness adapter:
-    python -m eval.cli tasks/fix-off-by-one/task.json custom-harness-v1 \
-        --harness-dir ../custom-harness
+Subcommands:
+    run      — run an eval task against an agent
+    results  — display results from a results.jsonl file
 
-    # Any custom adapter (no-arg constructor):
-    python -m eval.cli tasks/fix-off-by-one/task.json my-agent-v1 \
-        --adapter mypackage.adapters.MyAdapter
+Usage:
+    python -m eval.cli run tasks/your-task/task.json agent-v1 --harness-dir ../custom-harness
+    python -m eval.cli results
+    python -m eval.cli results results.jsonl
 """
 
 from __future__ import annotations
@@ -23,51 +23,49 @@ from eval.task_spec import TaskSpec
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run a coding eval task against an agent.",
-    )
-    parser.add_argument(
-        "task",
-        type=Path,
-        help="Path to task.json",
-    )
-    parser.add_argument(
-        "agent_id",
-        help="Name or version label for this agent run (e.g. my-agent-v1)",
-    )
-    parser.add_argument(
-        "--adapter",
-        help=(
-            "Dotted import path to an adapter class (e.g. mypackage.MyAdapter). "
-            "The class must have a no-argument constructor and satisfy AgentAdapter. "
-            "If omitted, defaults to the built-in CustomHarnessAdapter."
-        ),
-    )
-    parser.add_argument(
-        "--harness-dir",
-        type=Path,
-        help="Path to the custom-harness repo. Required when --adapter is not set.",
-    )
-    parser.add_argument(
-        "--results",
-        type=Path,
-        default=Path("results.jsonl"),
-        help="Path to results file (default: results.jsonl)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=300.0,
-        help="Agent timeout in seconds (default: 300)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Harness server port — only used with the built-in adapter (default: 8000)",
-    )
+    parser = argparse.ArgumentParser(description="Agent evaluation platform.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # ------------------------------------------------------------------
+    # run
+    # ------------------------------------------------------------------
+    run_parser = sub.add_parser("run", help="Run an eval task against an agent.")
+    run_parser.add_argument("task", type=Path, help="Path to task.json")
+    run_parser.add_argument("agent_id", help="Name or version label (e.g. agent-v1)")
+    run_parser.add_argument("--adapter", help="Dotted import path to adapter class (e.g. mypackage.MyAdapter)")
+    run_parser.add_argument("--harness-dir", type=Path, help="Path to custom-harness repo. Required when --adapter is not set.")
+    run_parser.add_argument("--results", type=Path, default=Path("results.jsonl"), help="Results file (default: results.jsonl)")
+    run_parser.add_argument("--timeout", type=float, default=300.0, help="Agent timeout in seconds (default: 300)")
+    run_parser.add_argument("--port", type=int, default=8000, help="Harness server port (default: 8000)")
+
+    # ------------------------------------------------------------------
+    # results
+    # ------------------------------------------------------------------
+    results_parser = sub.add_parser("results", help="Display results from a results file.")
+    results_parser.add_argument("file", type=Path, nargs="?", default=Path("results.jsonl"), help="Path to results file (default: results.jsonl)")
+
+    # ------------------------------------------------------------------
+    # serve
+    # ------------------------------------------------------------------
+    serve_parser = sub.add_parser("serve", help="Start the web UI server.")
+    serve_parser.add_argument("--results", type=Path, default=Path("results.jsonl"), help="Path to results file (default: results.jsonl)")
+    serve_parser.add_argument("--port", type=int, default=7000, help="Port to serve on (default: 7000)")
+
     args = parser.parse_args()
 
+    if args.command == "run":
+        _cmd_run(args)
+    elif args.command == "results":
+        _cmd_results(args)
+    elif args.command == "serve":
+        _cmd_serve(args)
+
+
+# ------------------------------------------------------------------
+# run command
+# ------------------------------------------------------------------
+
+def _cmd_run(args: argparse.Namespace) -> None:
     task_path = args.task.resolve()
     if not task_path.exists():
         print(f"error: task file not found: {task_path}", file=sys.stderr)
@@ -90,21 +88,88 @@ def main() -> None:
             task_dir=task_dir,
         )
 
-    _print_result(record)
+    _print_run_result(record)
     sys.exit(0 if record.eval_passed else 1)
 
 
+# ------------------------------------------------------------------
+# results command
+# ------------------------------------------------------------------
+
+def _cmd_results(args: argparse.Namespace) -> None:
+    path = args.file
+    if not path.exists():
+        print(f"no results file found at {path}", file=sys.stderr)
+        sys.exit(1)
+
+    records = ResultsStore(path).load_all()
+    if not records:
+        print("no results yet.")
+        return
+
+    # Column widths
+    w_task   = max(len("TASK"),   max(len(r.task_id)  for r in records))
+    w_agent  = max(len("AGENT"),  max(len(r.agent_id) for r in records))
+    w_status = max(len("STATUS"), max(len(r.run_status) for r in records))
+
+    header = (
+        f"{'TASK':<{w_task}}  "
+        f"{'AGENT':<{w_agent}}  "
+        f"{'STATUS':<{w_status}}  "
+        f"{'RESULT':<6}  "
+        f"{'TURNS':>5}  "
+        f"{'TOKENS IN':>10}  "
+        f"{'TOKENS OUT':>10}  "
+        f"{'TIME':>7}"
+    )
+    separator = "-" * len(header)
+
+    print()
+    print(header)
+    print(separator)
+
+    for r in records:
+        result = "PASS" if r.eval_passed else "FAIL"
+        tokens_in = f"{r.total_input_tokens:,}"
+        tokens_out = f"{r.total_output_tokens:,}"
+        time = f"{r.run_duration:.1f}s"
+        print(
+            f"{r.task_id:<{w_task}}  "
+            f"{r.agent_id:<{w_agent}}  "
+            f"{r.run_status:<{w_status}}  "
+            f"{result:<6}  "
+            f"{r.total_turns:>5}  "
+            f"{tokens_in:>10}  "
+            f"{tokens_out:>10}  "
+            f"{time:>7}"
+        )
+
+    print(separator)
+    total = len(records)
+    passed = sum(1 for r in records if r.eval_passed)
+    print(f"\n{passed}/{total} passed  ({100 * passed // total}%)")
+    print()
+
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+def _cmd_serve(args: argparse.Namespace) -> None:
+    import uvicorn
+    from eval.server import create_app
+    print(f"starting UI server at http://localhost:{args.port}")
+    print(f"reading results from {args.results}")
+    app = create_app(args.results.resolve())
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
+
+
 def _build_adapter(args: argparse.Namespace):
-    """Instantiate the correct adapter based on CLI args."""
     if args.adapter:
         return _import_adapter(args.adapter)
 
-    # Default: built-in CustomHarnessAdapter
     if not args.harness_dir:
-        print(
-            "error: --harness-dir is required when --adapter is not set.",
-            file=sys.stderr,
-        )
+        print("error: --harness-dir is required when --adapter is not set.", file=sys.stderr)
         sys.exit(1)
 
     harness_dir = args.harness_dir.resolve()
@@ -118,11 +183,6 @@ def _build_adapter(args: argparse.Namespace):
 
 
 def _import_adapter(import_path: str):
-    """Dynamically load an adapter class from a dotted import path and instantiate it.
-
-    The class must have a no-argument constructor.
-    Example: 'mypackage.adapters.MyAdapter'
-    """
     try:
         module_path, class_name = import_path.rsplit(".", 1)
     except ValueError:
@@ -147,7 +207,7 @@ def _import_adapter(import_path: str):
         sys.exit(1)
 
 
-def _print_result(record: RunRecord) -> None:
+def _print_run_result(record: RunRecord) -> None:
     print()
     print(f"status: {record.run_status}")
     print(f"result: {'PASS' if record.eval_passed else 'FAIL'}")
@@ -175,6 +235,11 @@ def _print_result(record: RunRecord) -> None:
         for cmd in record.eval_commands:
             mark = "pass" if cmd["passed"] else "FAIL"
             print(f"  [{mark}] {cmd['command']}  (exit {cmd['exit_code']}, {cmd['duration']:.1f}s)")
+            if not cmd["passed"]:
+                output = (cmd.get("stdout") or "") + (cmd.get("stderr") or "")
+                if output.strip():
+                    for line in output.strip().splitlines()[-20:]:
+                        print(f"         {line}")
 
 
 if __name__ == "__main__":

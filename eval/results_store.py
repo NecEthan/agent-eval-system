@@ -69,6 +69,8 @@ class RunRecord:
                     "exit_code": r.exit_code,
                     "passed": r.passed,
                     "duration": r.duration,
+                    "stdout": r.stdout,
+                    "stderr": r.stderr,
                 }
                 for r in eval_result.command_results
             ],

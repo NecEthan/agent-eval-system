@@ -100,6 +100,7 @@ class CustomHarnessAdapter:
                 "task": task,
                 "work_dir": str(working_dir),
                 "max_turns": self._config.max_turns,
+                "permission_mode": "ACCEPT_EDITS",
             },
             timeout=10.0,
         )
