@@ -1,20 +1,22 @@
 """CLI entry point for the agent evaluation platform.
 
 Usage:
-    python -m eval.cli <task.json> <agent-id> --harness-dir <path>
-
-Example:
+    # Built-in custom harness adapter:
     python -m eval.cli tasks/fix-off-by-one/task.json custom-harness-v1 \
         --harness-dir ../custom-harness
+
+    # Any custom adapter (no-arg constructor):
+    python -m eval.cli tasks/fix-off-by-one/task.json my-agent-v1 \
+        --adapter mypackage.adapters.MyAdapter
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
-from eval.adapters.custom_harness import CustomHarnessAdapter, HarnessConfig
 from eval.results_store import ResultsStore, RunRecord
 from eval.runner import Runner, RunnerConfig
 from eval.task_spec import TaskSpec
@@ -31,13 +33,20 @@ def main() -> None:
     )
     parser.add_argument(
         "agent_id",
-        help="Name or version label for this agent run (e.g. custom-harness-v1)",
+        help="Name or version label for this agent run (e.g. my-agent-v1)",
+    )
+    parser.add_argument(
+        "--adapter",
+        help=(
+            "Dotted import path to an adapter class (e.g. mypackage.MyAdapter). "
+            "The class must have a no-argument constructor and satisfy AgentAdapter. "
+            "If omitted, defaults to the built-in CustomHarnessAdapter."
+        ),
     )
     parser.add_argument(
         "--harness-dir",
         type=Path,
-        required=True,
-        help="Path to the custom-harness repo on disk",
+        help="Path to the custom-harness repo. Required when --adapter is not set.",
     )
     parser.add_argument(
         "--results",
@@ -55,7 +64,7 @@ def main() -> None:
         "--port",
         type=int,
         default=8000,
-        help="Harness server port (default: 8000)",
+        help="Harness server port — only used with the built-in adapter (default: 8000)",
     )
     args = parser.parse_args()
 
@@ -64,23 +73,17 @@ def main() -> None:
         print(f"error: task file not found: {task_path}", file=sys.stderr)
         sys.exit(1)
 
-    harness_dir = args.harness_dir.resolve()
-    if not harness_dir.exists():
-        print(f"error: harness directory not found: {harness_dir}", file=sys.stderr)
-        sys.exit(1)
-
     task_spec = TaskSpec.from_json(task_path)
     task_dir = task_path.parent
-
-    print(f"task:   {task_spec.id}")
-    print(f"agent:  {args.agent_id}")
-    print(f"starting harness server on port {args.port}...")
-
-    harness_config = HarnessConfig(harness_dir=harness_dir, port=args.port)
     store = ResultsStore(args.results)
     runner_config = RunnerConfig(timeout=args.timeout)
 
-    with CustomHarnessAdapter(harness_config) as adapter:
+    print(f"task:   {task_spec.id}")
+    print(f"agent:  {args.agent_id}")
+
+    adapter = _build_adapter(args)
+
+    with adapter:
         record = Runner(adapter, store, runner_config).run(
             task_spec,
             agent_id=args.agent_id,
@@ -89,6 +92,59 @@ def main() -> None:
 
     _print_result(record)
     sys.exit(0 if record.eval_passed else 1)
+
+
+def _build_adapter(args: argparse.Namespace):
+    """Instantiate the correct adapter based on CLI args."""
+    if args.adapter:
+        return _import_adapter(args.adapter)
+
+    # Default: built-in CustomHarnessAdapter
+    if not args.harness_dir:
+        print(
+            "error: --harness-dir is required when --adapter is not set.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    harness_dir = args.harness_dir.resolve()
+    if not harness_dir.exists():
+        print(f"error: harness directory not found: {harness_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    from eval.adapters.custom_harness import CustomHarnessAdapter, HarnessConfig
+    print(f"starting harness server on port {args.port}...")
+    return CustomHarnessAdapter(HarnessConfig(harness_dir=harness_dir, port=args.port))
+
+
+def _import_adapter(import_path: str):
+    """Dynamically load an adapter class from a dotted import path and instantiate it.
+
+    The class must have a no-argument constructor.
+    Example: 'mypackage.adapters.MyAdapter'
+    """
+    try:
+        module_path, class_name = import_path.rsplit(".", 1)
+    except ValueError:
+        print(f"error: invalid adapter path '{import_path}'. Expected 'module.ClassName'.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError as e:
+        print(f"error: could not import adapter module '{module_path}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    cls = getattr(module, class_name, None)
+    if cls is None:
+        print(f"error: class '{class_name}' not found in module '{module_path}'.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        return cls()
+    except Exception as e:
+        print(f"error: could not instantiate adapter '{import_path}': {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _print_result(record: RunRecord) -> None:
