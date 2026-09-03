@@ -6,3 +6,7 @@ __pycache__/
 
 # Task codebases — added locally, not committed
 tasks/*/repo/
+
+# Node
+node_modules/
+package-lock.json
