@@ -1,19 +1,18 @@
 """ResultsStore — append-only record of every eval run.
 
-Persists one RunRecord per run as a JSON line. Each record contains
-a summary of the run and eval results. Raw agent logs are excluded
-to keep records lean — they are available from the adapter during the run.
+Each record contains the full agent event log plus extracted metrics
+(tokens, turns, tool calls) so every run is fully inspectable.
 
-Format: JSON Lines (.jsonl) — one JSON object per line, human-readable,
-queryable with standard tools (jq, Python, etc.).
+Format: JSON Lines (.jsonl) — one JSON object per line.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from eval.evaluator import EvalResult
 from eval.run_result import RunResult
@@ -21,16 +20,27 @@ from eval.run_result import RunResult
 
 @dataclass
 class RunRecord:
-    """Summary of one evaluation run. Stored as one line in the results file."""
+    """Complete record of one evaluation run."""
 
     task_id: str
-    agent_id: str       # name/version of the agent being evaluated
-    timestamp: str      # ISO 8601 UTC
-    run_status: str     # "completed" | "failed" | "timeout"
-    run_duration: float # wall-clock seconds
+    agent_id: str
+    timestamp: str           # ISO 8601 UTC
+    run_status: str          # "completed" | "failed" | "timeout"
+    run_duration: float      # wall-clock seconds
     run_error: str | None
+
+    # Agent metrics — extracted from event stream
+    total_input_tokens: int
+    total_output_tokens: int
+    total_turns: int
+    tool_calls: list[dict]   # [{name, input, output, is_error, duration}]
+
+    # Eval results
     eval_passed: bool
-    eval_commands: list[dict]  # {command, exit_code, passed, duration}
+    eval_commands: list[dict]  # [{command, exit_code, passed, duration}]
+
+    # Full event stream for deep inspection
+    logs: list[dict[str, Any]]
 
     @classmethod
     def create(
@@ -40,6 +50,7 @@ class RunRecord:
         run_result: RunResult,
         eval_result: EvalResult,
     ) -> RunRecord:
+        metrics = _extract_metrics(run_result.logs)
         return cls(
             task_id=task_id,
             agent_id=agent_id,
@@ -47,6 +58,10 @@ class RunRecord:
             run_status=run_result.status,
             run_duration=run_result.duration,
             run_error=run_result.error,
+            total_input_tokens=metrics["total_input_tokens"],
+            total_output_tokens=metrics["total_output_tokens"],
+            total_turns=metrics["total_turns"],
+            tool_calls=metrics["tool_calls"],
             eval_passed=eval_result.passed,
             eval_commands=[
                 {
@@ -57,6 +72,7 @@ class RunRecord:
                 }
                 for r in eval_result.command_results
             ],
+            logs=run_result.logs,
         )
 
     @classmethod
@@ -65,23 +81,17 @@ class RunRecord:
 
 
 class ResultsStore:
-    """Append-only JSON Lines store for eval run records.
-
-    Each line is one JSON-serialized RunRecord.
-    The file is created on first save if it does not exist.
-    """
+    """Append-only JSON Lines store for eval run records."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     def save(self, record: RunRecord) -> None:
-        """Append one record to the store."""
         with self._path.open("a") as f:
             f.write(json.dumps(asdict(record)) + "\n")
 
     def load_all(self) -> list[RunRecord]:
-        """Return all records in insertion order."""
         if not self._path.exists():
             return []
         records = []
@@ -90,3 +100,42 @@ class ResultsStore:
             if line:
                 records.append(RunRecord.from_dict(json.loads(line)))
         return records
+
+
+def _extract_metrics(events: list[dict]) -> dict:
+    """Pull token counts, turn count, and tool call details from the event stream."""
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_turns = 0
+    tool_calls = []
+    pending: dict[str, dict] = {}  # tool_use_id → ToolCalled event
+
+    for event in events:
+        t = event.get("type")
+
+        if t == "ModelResponded":
+            total_input_tokens += event.get("input_tokens", 0)
+            total_output_tokens += event.get("output_tokens", 0)
+
+        elif t == "AgentFinished":
+            total_turns = event.get("total_turns", 0)
+
+        elif t == "ToolCalled":
+            pending[event["tool_use_id"]] = event
+
+        elif t == "ToolResulted":
+            call = pending.pop(event.get("tool_use_id", ""), {})
+            tool_calls.append({
+                "name": event.get("name"),
+                "input": call.get("input", {}),
+                "output": event.get("output", ""),
+                "is_error": event.get("is_error", False),
+                "duration": event.get("duration"),
+            })
+
+    return {
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "total_turns": total_turns,
+        "tool_calls": tool_calls,
+    }

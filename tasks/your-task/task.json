@@ -1,0 +1,8 @@
+{
+  "id": "react-cart-discount",
+  "description": "The `calculateTotal` function in `src/utils/calculateTotal.js` is applying the discount incorrectly. Fix the bug so all tests pass.",
+  "source_path": "./repo",
+  "evaluation": {
+    "commands": ["npm install", "npm test"]
+  }
+}

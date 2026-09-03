@@ -156,9 +156,22 @@ def _print_result(record: RunRecord) -> None:
     if record.run_error:
         print(f"error:  {record.run_error}")
 
+    if record.total_turns or record.total_input_tokens:
+        print()
+        print(f"turns:  {record.total_turns}")
+        print(f"tokens: {record.total_input_tokens:,} in / {record.total_output_tokens:,} out")
+
+    if record.tool_calls:
+        print()
+        print("tool calls:")
+        for call in record.tool_calls:
+            status = "error" if call["is_error"] else "ok"
+            duration = f"{call['duration']:.2f}s" if call["duration"] is not None else "?"
+            print(f"  [{status}] {call['name']}  ({duration})")
+
     if record.eval_commands:
         print()
-        print("commands:")
+        print("eval:")
         for cmd in record.eval_commands:
             mark = "pass" if cmd["passed"] else "FAIL"
             print(f"  [{mark}] {cmd['command']}  (exit {cmd['exit_code']}, {cmd['duration']:.1f}s)")
