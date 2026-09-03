@@ -49,7 +49,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     serve_parser = sub.add_parser("serve", help="Start the web UI server.")
     serve_parser.add_argument("--results", type=Path, default=Path("results.jsonl"), help="Path to results file (default: results.jsonl)")
-    serve_parser.add_argument("--port", type=int, default=7000, help="Port to serve on (default: 7000)")
+    serve_parser.add_argument("--port", type=int, default=7001, help="Port to serve on (default: 7001)")
+    serve_parser.add_argument("--harness-dir", type=Path, default=None, help="Path to custom-harness repo (enables Run button in UI)")
 
     args = parser.parse_args()
 
@@ -158,9 +159,12 @@ def _cmd_results(args: argparse.Namespace) -> None:
 def _cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
     from eval.server import create_app
+    harness_dir = args.harness_dir.resolve() if args.harness_dir else None
     print(f"starting UI server at http://localhost:{args.port}")
     print(f"reading results from {args.results}")
-    app = create_app(args.results.resolve())
+    if harness_dir:
+        print(f"harness dir: {harness_dir}")
+    app = create_app(args.results.resolve(), harness_dir=harness_dir)
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 

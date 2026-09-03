@@ -9,6 +9,7 @@ Constraint: the harness server is single-tenant (one run at a time).
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -50,9 +51,13 @@ class CustomHarnessAdapter:
 
     def start(self) -> None:
         """Start the harness server subprocess."""
+        # Use the harness venv python if present, else fall back to current interpreter.
+        venv_python = self._config.harness_dir / ".venv" / "bin" / "python"
+        python = str(venv_python) if venv_python.exists() else sys.executable
+
         self._process = subprocess.Popen(
             [
-                "python", "-m", "uvicorn", "harness.server:app",
+                python, "-m", "uvicorn", "harness.server:app",
                 "--host", self._config.host,
                 "--port", str(self._config.port),
             ],
@@ -115,9 +120,13 @@ class CustomHarnessAdapter:
                     error=None,
                 )
 
-            state = httpx.get(f"{self._base_url}/run/state", timeout=5.0).json()
+            resp = httpx.get(f"{self._base_url}/run/state", timeout=5.0)
+            if resp.status_code != 200:
+                time.sleep(_POLL_INTERVAL)
+                continue
+            state = resp.json()
 
-            if state["done"]:
+            if state.get("done", False):
                 return _result_from_events(
                     events=state["events"],
                     duration=time.monotonic() - start,

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import TurnTimeline from './TurnTimeline.jsx';
+import ConversationView from './ConversationView.jsx';
 
 export default function RunDetail({ index, onBack }) {
   const [run, setRun] = useState(null);
+  const [tab, setTab] = useState('conversation');
 
   useEffect(() => {
     fetch(`/api/runs/${index}`).then(r => r.json()).then(setRun);
@@ -12,81 +13,61 @@ export default function RunDetail({ index, onBack }) {
 
   return (
     <div>
+      {/* Header */}
       <div className="header">
         <button className="back-btn" onClick={onBack}>← Back</button>
         <div>
           <h1>{run.task_id}</h1>
-          <span className="header-sub">{run.agent_id}</span>
+          <span className="header-sub">{run.agent_id} · {new Date(run.timestamp).toLocaleString()}</span>
         </div>
-        <span className={`badge ${run.eval_passed ? 'badge-pass' : 'badge-fail'}`} style={{ marginLeft: 'auto', fontSize: 14, padding: '4px 12px' }}>
+        <span className={`badge ${run.eval_passed ? 'badge-pass' : 'badge-fail'}`} style={{ marginLeft: 'auto', fontSize: 14, padding: '5px 14px' }}>
           {run.eval_passed ? 'PASS' : 'FAIL'}
         </span>
       </div>
 
-      {/* Metrics */}
-      <div className="card">
-        <div className="card-title">Run metrics</div>
-        <div className="metrics">
-          <div className="metric">
-            <label>Status</label>
-            <value><span className={`badge badge-${run.run_status}`}>{run.run_status}</span></value>
-          </div>
-          <div className="metric">
-            <label>Duration</label>
-            <value>{run.run_duration.toFixed(1)}<small>s</small></value>
-          </div>
-          <div className="metric">
-            <label>Turns</label>
-            <value>{run.total_turns}</value>
-          </div>
-          <div className="metric">
-            <label>Tokens In</label>
-            <value>{run.total_input_tokens.toLocaleString()}</value>
-          </div>
-          <div className="metric">
-            <label>Tokens Out</label>
-            <value>{run.total_output_tokens.toLocaleString()}</value>
-          </div>
-          <div className="metric">
-            <label>Tool Calls</label>
-            <value>{run.tool_calls.length}</value>
-          </div>
-        </div>
-        {run.run_error && (
-          <div style={{ marginTop: 12, color: '#f87171', fontSize: 13 }}>
-            Error: {run.run_error}
-          </div>
-        )}
+      {/* Metrics strip */}
+      <div className="metrics-strip">
+        <Metric label="Status" value={<span className={`badge badge-${run.run_status}`}>{run.run_status}</span>} />
+        <Metric label="Duration" value={`${run.run_duration.toFixed(1)}s`} />
+        <Metric label="Turns" value={run.total_turns} />
+        <Metric label="Tokens in" value={run.total_input_tokens.toLocaleString()} />
+        <Metric label="Tokens out" value={run.total_output_tokens.toLocaleString()} />
+        <Metric label="Tool calls" value={run.tool_calls.length} />
       </div>
 
-      {/* Results */}
-      {(() => {
-        const finished = run.logs.find(e => e.type === 'AgentFinished');
-        return finished?.final_text ? (
-          <div className="card">
-            <div className="card-title">Result</div>
-            <div className="agent-text">{finished.final_text}</div>
-          </div>
-        ) : null;
-      })()}
+      {/* Tabs */}
+      <div className="tabs">
+        {['conversation', 'eval'].map(t => (
+          <button key={t} className={`tab-btn ${tab === t ? 'tab-btn-active' : ''}`} onClick={() => setTab(t)}>
+            {t === 'conversation' ? 'Conversation' : `Eval (${run.eval_commands.length})`}
+          </button>
+        ))}
+      </div>
 
-      {/* Turn timeline */}
-      {run.logs.length > 0 && (
-        <div className="card">
-          <div className="card-title">Turn timeline</div>
-          <TurnTimeline logs={run.logs} />
-        </div>
+      {/* Conversation tab */}
+      {tab === 'conversation' && (
+        <ConversationView logs={run.logs} />
       )}
 
-      {/* Eval results */}
-      {run.eval_commands.length > 0 && (
-        <div className="card">
-          <div className="card-title">Eval commands</div>
-          {run.eval_commands.map((cmd, i) => (
-            <EvalCommand key={i} cmd={cmd} />
-          ))}
+      {/* Eval tab */}
+      {tab === 'eval' && (
+        <div>
+          {run.eval_commands.length === 0 ? (
+            <div className="empty"><p>No eval commands.</p></div>
+          ) : (
+            run.eval_commands.map((cmd, i) => <EvalCommand key={i} cmd={cmd} />)
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="metrics-strip-item">
+      <div className="metrics-strip-label">{label}</div>
+      <div className="metrics-strip-value">{value}</div>
     </div>
   );
 }
@@ -102,7 +83,7 @@ function EvalCommand({ cmd }) {
           {cmd.passed ? 'PASS' : 'FAIL'}
         </span>
         <span className="eval-cmd-name">{cmd.command}</span>
-        <span style={{ color: '#555', fontSize: 12 }}>exit {cmd.exit_code} · {cmd.duration.toFixed(1)}s</span>
+        <span style={{ color: '#4a4f70', fontSize: 12 }}>exit {cmd.exit_code} · {cmd.duration.toFixed(1)}s</span>
         <span className="chevron">{open ? '▲' : '▼'}</span>
       </div>
       {open && output && (

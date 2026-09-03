@@ -1,12 +1,13 @@
 """FastAPI server — serves results API and the React UI.
 
 Start with:
-    python -m eval.cli serve [--results results.jsonl] [--port 7000]
+    python -m eval.cli serve [--results results.jsonl] [--port 7001] [--harness-dir PATH]
 """
 
 from __future__ import annotations
 
 import dataclasses
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -20,7 +21,7 @@ from eval.results_store import ResultsStore
 _UI_DIST = Path(__file__).parent.parent / "ui" / "dist"
 
 
-def create_app(results_path: Path) -> FastAPI:
+def create_app(results_path: Path, harness_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="Agent Eval UI")
 
     app.add_middleware(
@@ -31,6 +32,10 @@ def create_app(results_path: Path) -> FastAPI:
     )
 
     store = ResultsStore(results_path)
+
+    # Simple run state — one run at a time.
+    _run_state: dict = {"running": False, "error": None}
+    _run_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # API
@@ -62,6 +67,54 @@ def create_app(results_path: Path) -> FastAPI:
         if index < 0 or index >= len(records):
             raise HTTPException(status_code=404, detail="Run not found")
         return dataclasses.asdict(records[index])
+
+    @app.get("/api/run/status")
+    def run_status():
+        return {
+            "running": _run_state["running"],
+            "error": _run_state["error"],
+            "harness_configured": harness_dir is not None,
+        }
+
+    @app.post("/api/run")
+    def start_run(body: dict = None):
+        if harness_dir is None:
+            raise HTTPException(status_code=400, detail="No --harness-dir configured. Restart server with --harness-dir.")
+
+        with _run_lock:
+            if _run_state["running"]:
+                raise HTTPException(status_code=409, detail="A run is already in progress.")
+            _run_state["running"] = True
+            _run_state["error"] = None
+
+
+        body = body or {}
+        project_root = Path(__file__).parent.parent
+        task_path = project_root / body.get("task", "tasks/your-task/task.json")
+        agent_id = body.get("agent_id", "agent-v1")
+
+        def _do_run():
+            try:
+                from eval.adapters.custom_harness import CustomHarnessAdapter, HarnessConfig
+                from eval.evaluator import Evaluator
+                from eval.runner import Runner, RunnerConfig
+                from eval.task_spec import TaskSpec
+
+                task_spec = TaskSpec.from_json(task_path.resolve())
+                task_dir = task_path.resolve().parent
+                adapter = CustomHarnessAdapter(HarnessConfig(harness_dir=harness_dir))
+                with adapter:
+                    Runner(adapter, store, RunnerConfig()).run(
+                        task_spec, agent_id=agent_id, task_dir=task_dir
+                    )
+                _run_state["error"] = None
+            except Exception as exc:
+                _run_state["error"] = str(exc)
+            finally:
+                _run_state["running"] = False
+
+        threading.Thread(target=_do_run, daemon=True).start()
+        return {"status": "started"}
 
     # ------------------------------------------------------------------
     # React UI (served from ui/dist after npm run build)
