@@ -15,6 +15,9 @@ dev = [
     "pytest>=8.0.0",
 ]
 
+[project.scripts]
+eval-run = "eval.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["eval"]
 
