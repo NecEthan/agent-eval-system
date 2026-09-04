@@ -1,0 +1,10 @@
+{
+  "id": "creayete-emoty-txt-file",
+  "description": "creayete emoty txt file",
+  "source_path": "/Users/ethanwicks/Documents/agent-eval-system/tasks/your-task/repo",
+  "evaluation": {
+    "commands": [
+      "python -m pytest tests/"
+    ]
+  }
+}

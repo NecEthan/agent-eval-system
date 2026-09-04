@@ -140,6 +140,29 @@ pre {
 }
 
 /* ============================================================
+   Turn blocks
+   ============================================================ */
+.turn-block {
+  border: 1px solid #1e2235; border-radius: 10px;
+  overflow: hidden; margin-bottom: 10px;
+}
+.turn-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #0d0f1a;
+  cursor: pointer; user-select: none;
+}
+.turn-header:hover { background: #101220; }
+.turn-label {
+  font-size: 11px; font-weight: 700; color: #7c6fff;
+  text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
+}
+.turn-model { font-size: 12px; color: #8b91b8; white-space: nowrap; }
+.turn-stat { font-size: 12px; color: #4a4f70; white-space: nowrap; }
+.turn-stop-final { color: #34d399 !important; }
+.turn-stop-tool  { color: #fbbf24 !important; }
+.turn-body { padding: 14px 16px; background: #0a0c14; display: flex; flex-direction: column; gap: 6px; }
+
+/* ============================================================
    Conversation view
    ============================================================ */
 .conv { display: flex; flex-direction: column; gap: 0; }
@@ -263,6 +286,30 @@ pre {
   font-size: 10px; font-weight: 700; color: #7c6fff;
   text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
 }
+
+/* ============================================================
+   New Run form
+   ============================================================ */
+.new-run-form {
+  background: #131520; border: 1px solid #1e2235;
+  border-radius: 10px; padding: 20px; margin-bottom: 24px;
+}
+.form-row { margin-bottom: 14px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.form-label {
+  display: block; font-size: 10px; font-weight: 700; color: #4a4f70;
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px;
+}
+.form-input, .form-textarea {
+  width: 100%; background: #0d0f1a; border: 1px solid #1e2235;
+  border-radius: 6px; color: #c8cde8; font-size: 13px;
+  padding: 8px 10px; font-family: inherit;
+}
+.form-input:focus, .form-textarea:focus { outline: none; border-color: #7c6fff; }
+.form-textarea { resize: vertical; min-height: 72px; }
+.form-textarea-mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.form-hint { font-size: 11px; color: #2a2f4a; margin-top: 4px; }
+.form-actions { display: flex; gap: 10px; margin-top: 18px; }
 
 /* ============================================================
    Empty / loading

@@ -7,6 +7,8 @@ Start with:
 from __future__ import annotations
 
 import dataclasses
+import json
+import re
 import threading
 from pathlib import Path
 
@@ -19,6 +21,10 @@ from eval.results_store import ResultsStore
 
 
 _UI_DIST = Path(__file__).parent.parent / "ui" / "dist"
+
+
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50] or "task"
 
 
 def create_app(results_path: Path, harness_dir: Path | None = None) -> FastAPI:
@@ -87,11 +93,33 @@ def create_app(results_path: Path, harness_dir: Path | None = None) -> FastAPI:
             _run_state["running"] = True
             _run_state["error"] = None
 
-
         body = body or {}
         project_root = Path(__file__).parent.parent
-        task_path = project_root / body.get("task", "tasks/your-task/task.json")
         agent_id = body.get("agent_id", "agent-v1")
+
+        # Inline task creation: build task.json from form fields.
+        if "description" in body:
+            task_id = body.get("task_id") or _slugify(body["description"])
+            codebase_path = body.get("codebase_path", "")
+            eval_commands = body.get("eval_commands") or []
+            if not codebase_path:
+                _run_state["running"] = False
+                raise HTTPException(status_code=400, detail="codebase_path is required.")
+            if not eval_commands:
+                _run_state["running"] = False
+                raise HTTPException(status_code=400, detail="eval_commands must not be empty.")
+            task_dir = project_root / "tasks" / task_id
+            task_dir.mkdir(parents=True, exist_ok=True)
+            task_json = {
+                "id": task_id,
+                "description": body["description"],
+                "source_path": codebase_path,
+                "evaluation": {"commands": eval_commands},
+            }
+            (task_dir / "task.json").write_text(json.dumps(task_json, indent=2))
+            task_path = task_dir / "task.json"
+        else:
+            task_path = project_root / body.get("task", "tasks/your-task/task.json")
 
         def _do_run():
             try:

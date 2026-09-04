@@ -96,7 +96,7 @@ There are two ways to connect an agent.
 If your harness exposes the same HTTP API as [custom-harness](https://github.com/NecEthan/custom-harness) (`POST /run`, `GET /run/state`, `GET /health`), point `--harness-dir` at your repo:
 
 ```bash
-python -m eval.cli tasks/your-task/task.json agent-v1 \
+python -m eval.cli run tasks/your-task/task.json agent-v1 \
     --harness-dir /path/to/your-harness
 ```
 
@@ -137,7 +137,7 @@ class MyAdapter:
 Then run with your adapter:
 
 ```bash
-python -m eval.cli tasks/your-task/task.json agent-v1 \
+python -m eval.cli run tasks/your-task/task.json agent-v1 \
     --adapter my_adapter.MyAdapter
 ```
 
@@ -148,7 +148,7 @@ The adapter class must have a no-argument constructor. Configure it via environm
 ## Running an eval
 
 ```bash
-python -m eval.cli <task.json> <agent-id> [options]
+python -m eval.cli run <task.json> <agent-id> [options]
 ```
 
 **Arguments:**
@@ -161,7 +161,7 @@ python -m eval.cli <task.json> <agent-id> [options]
 | `--harness-dir` | Path to a custom-harness compatible repo (used when `--adapter` is not set) |
 | `--results` | Path to results file (default: `results.jsonl`) |
 | `--timeout` | Agent timeout in seconds (default: `300`) |
-| `--port` | Harness server port, built-in adapter only (default: `8000`) |
+| `--port` | Harness server port, built-in adapter only (default: auto-assigned) |
 
 **Example output:**
 
@@ -193,6 +193,11 @@ Every run appends a record to `results.jsonl`:
   "run_status": "completed",
   "run_duration": 14.2,
   "run_error": null,
+  "metrics": {
+    "tokens": 12450,
+    "turns": 8,
+    "tool_calls": 23
+  },
   "eval_passed": true,
   "eval_commands": [
     {"command": "python -m pytest tests/", "exit_code": 0, "passed": true, "duration": 3.1}
@@ -210,6 +215,34 @@ jq 'select(.agent_id == "my-agent-v1") | .eval_passed' results.jsonl | grep -c t
 jq 'select(.task_id == "your-task") | {agent_id, eval_passed, run_duration}' results.jsonl
 ```
 
+### Viewing results
+
+```bash
+# print a summary table in the terminal
+python -m eval.cli results
+
+# optional: point at a different results file
+python -m eval.cli results --results path/to/results.jsonl
+```
+
+---
+
+## Web UI
+
+Start the dashboard to browse runs, inspect turn timelines, and view per-run details:
+
+```bash
+python -m eval.cli serve --port 7001
+```
+
+Opens a React app at `http://localhost:7001`. The UI reads from `results.jsonl` and shows:
+
+- Run list with pass/fail, duration, and metrics
+- Per-run detail view with evaluation command output
+- Turn timeline and conversation view for harness-based runs
+
+The server also exposes a REST API at `/api/runs`.
+
 ---
 
 ## Project structure
@@ -224,9 +257,13 @@ agent-eval-system/
 │   ├── evaluator.py          # Evaluator — runs commands, returns pass/fail
 │   ├── results_store.py      # ResultsStore — appends records to .jsonl
 │   ├── runner.py             # Runner — orchestrates the full pipeline
-│   ├── cli.py                # CLI entry point
+│   ├── server.py             # FastAPI server — backs the web UI
+│   ├── cli.py                # CLI entry point (run / results / serve)
 │   └── adapters/
 │       └── custom_harness.py # Built-in adapter for custom-harness
+├── ui/                       # React web dashboard (Vite)
+│   └── src/
+│       └── components/       # RunList, RunDetail, TurnTimeline, ConversationView
 └── tasks/
     └── fix-off-by-one/       # Example task
         └── task.json
