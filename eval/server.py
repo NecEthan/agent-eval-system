@@ -131,7 +131,9 @@ def create_app(results_path: Path, harness_dir: Path | None = None) -> FastAPI:
                 task_spec = TaskSpec.from_json(task_path.resolve())
                 task_dir = task_path.resolve().parent
                 adapter = CustomHarnessAdapter(HarnessConfig(harness_dir=harness_dir))
+                # start subprocess with adapter
                 with adapter:
+                    # run agent get results as events
                     Runner(adapter, store, RunnerConfig()).run(
                         task_spec, agent_id=agent_id, task_dir=task_dir
                     )
