@@ -8,6 +8,7 @@ Constraint: the harness server is single-tenant (one run at a time).
 
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 import time
@@ -21,6 +22,12 @@ from eval.run_result import RunResult
 
 _POLL_INTERVAL = 0.5    # seconds between /run/state polls
 _STARTUP_TIMEOUT = 15.0  # seconds to wait for server to become ready
+
+
+def _find_free_port(host: str) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
 
 
 @dataclass
@@ -55,11 +62,14 @@ class CustomHarnessAdapter:
         venv_python = self._config.harness_dir / ".venv" / "bin" / "python"
         python = str(venv_python) if venv_python.exists() else sys.executable
 
+        port = _find_free_port(self._config.host)
+        self._base_url = f"http://{self._config.host}:{port}"
+
         self._process = subprocess.Popen(
             [
                 python, "-m", "uvicorn", "harness.server:app",
                 "--host", self._config.host,
-                "--port", str(self._config.port),
+                "--port", str(port),
             ],
             cwd=self._config.harness_dir,
             stdout=subprocess.DEVNULL,
@@ -105,7 +115,7 @@ class CustomHarnessAdapter:
                 "task": task,
                 "work_dir": str(working_dir),
                 "max_turns": self._config.max_turns,
-                "permission_mode": "ACCEPT_EDITS",
+                "permission_mode": "acceptEdits",
             },
             timeout=10.0,
         )
@@ -113,10 +123,15 @@ class CustomHarnessAdapter:
         while True:
             elapsed = time.monotonic() - start
             if elapsed >= timeout:
+                try:
+                    resp = httpx.get(f"{self._base_url}/run/state", timeout=5.0)
+                    partial_logs = resp.json().get("events", []) if resp.status_code == 200 else []
+                except Exception:
+                    partial_logs = []
                 return RunResult(
                     status="timeout",
                     duration=elapsed,
-                    logs=[],
+                    logs=partial_logs,
                     error=None,
                 )
 

@@ -30,7 +30,7 @@ class Environment:
         Returns the path to the working directory.
         """
         self._working_dir = Path(tempfile.mkdtemp(prefix="eval-"))
-        shutil.copytree(self._source_path, self._working_dir, dirs_exist_ok=True)
+        shutil.copytree(self._source_path, self._working_dir, dirs_exist_ok=True, symlinks=True)
         return self._working_dir
 
     def cleanup(self) -> None:
