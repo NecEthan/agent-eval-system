@@ -34,6 +34,12 @@ class RunRecord:
     total_output_tokens: int
     total_turns: int
     tool_calls: list[dict]   # [{name, input, output, is_error, duration}]
+    model_used: str | None      # actual model returned by API (from ModelResponded.model_used)
+    system_prompt: str | None   # system prompt sent to LLM (from ModelCalled.system)
+    failure_type: str | None    # AgentFailed.error_type if run failed
+    context_condensations: int  # ContextCondensed event count
+    retry_count: int            # RetryScheduled event count
+    control_flow_aborts: int    # ControlFlowAborted event count
 
     # Eval results
     eval_passed: bool
@@ -62,6 +68,12 @@ class RunRecord:
             total_output_tokens=metrics["total_output_tokens"],
             total_turns=metrics["total_turns"],
             tool_calls=metrics["tool_calls"],
+            model_used=metrics["model_used"],
+            system_prompt=metrics["system_prompt"],
+            failure_type=metrics["failure_type"],
+            context_condensations=metrics["context_condensations"],
+            retry_count=metrics["retry_count"],
+            control_flow_aborts=metrics["control_flow_aborts"],
             eval_passed=eval_result.passed,
             eval_commands=[
                 {
@@ -79,6 +91,12 @@ class RunRecord:
 
     @classmethod
     def from_dict(cls, data: dict) -> RunRecord:
+        data.setdefault("model_used", None)
+        data.setdefault("system_prompt", None)
+        data.setdefault("failure_type", None)
+        data.setdefault("context_condensations", 0)
+        data.setdefault("retry_count", 0)
+        data.setdefault("control_flow_aborts", 0)
         return cls(**data)
 
 
@@ -111,16 +129,31 @@ def _extract_metrics(events: list[dict]) -> dict:
     total_turns = 0
     tool_calls = []
     pending: dict[str, dict] = {}  # tool_use_id → ToolCalled event
+    model_used: str | None = None
+    system_prompt: str | None = None
+    failure_type: str | None = None
+    context_condensations = 0
+    retry_count = 0
+    control_flow_aborts = 0
 
     for event in events:
         t = event.get("type")
 
-        if t == "ModelResponded":
+        if t == "ModelCalled":
+            if system_prompt is None:
+                system_prompt = event.get("system") or None
+
+        elif t == "ModelResponded":
             total_input_tokens += event.get("input_tokens", 0)
             total_output_tokens += event.get("output_tokens", 0)
+            if model_used is None:
+                model_used = event.get("model_used") or event.get("model")
 
         elif t == "AgentFinished":
             total_turns = event.get("total_turns", 0)
+
+        elif t == "AgentFailed":
+            failure_type = event.get("error_type")
 
         elif t == "ToolCalled":
             pending[event["tool_use_id"]] = event
@@ -135,9 +168,24 @@ def _extract_metrics(events: list[dict]) -> dict:
                 "duration": event.get("duration"),
             })
 
+        elif t == "ContextCondensed":
+            context_condensations += 1
+
+        elif t == "RetryScheduled":
+            retry_count += 1
+
+        elif t == "ControlFlowAborted":
+            control_flow_aborts += 1
+
     return {
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
         "total_turns": total_turns,
         "tool_calls": tool_calls,
+        "model_used": model_used,
+        "system_prompt": system_prompt,
+        "failure_type": failure_type,
+        "context_condensations": context_condensations,
+        "retry_count": retry_count,
+        "control_flow_aborts": control_flow_aborts,
     }

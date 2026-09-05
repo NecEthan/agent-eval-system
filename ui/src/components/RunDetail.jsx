@@ -33,7 +33,16 @@ export default function RunDetail({ index, onBack }) {
         <Metric label="Tokens in" value={run.total_input_tokens.toLocaleString()} />
         <Metric label="Tokens out" value={run.total_output_tokens.toLocaleString()} />
         <Metric label="Tool calls" value={run.tool_calls.length} />
+        {run.context_condensations > 0 && <Metric label="Condensed" value={run.context_condensations} />}
+        {run.retry_count > 0 && <Metric label="Retries" value={run.retry_count} />}
+        {run.control_flow_aborts > 0 && <Metric label="Aborted" value={run.control_flow_aborts} />}
       </div>
+      {(run.model_used || run.failure_type) && (
+        <div style={{ fontSize: 11, color: '#4a4f70', marginBottom: 16, marginTop: -12, display: 'flex', gap: 16 }}>
+          {run.model_used && <span>model: {run.model_used}</span>}
+          {run.failure_type && <span style={{ color: '#f87171' }}>failure: {run.failure_type}</span>}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="tabs">

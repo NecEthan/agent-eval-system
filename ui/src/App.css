@@ -161,6 +161,22 @@ pre {
 .turn-stop-final { color: #34d399 !important; }
 .turn-stop-tool  { color: #fbbf24 !important; }
 .turn-body { padding: 14px 16px; background: #0a0c14; display: flex; flex-direction: column; gap: 6px; }
+.turn-event {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; border-radius: 6px; font-size: 12px;
+}
+.turn-event-label { font-weight: 700; white-space: nowrap; }
+.turn-event-detail { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-event-meta { color: #4a4f70; white-space: nowrap; }
+.turn-event-retry    { background: #1a1500; border: 1px solid #3a2f00; }
+.turn-event-retry    .turn-event-label { color: #fbbf24; }
+.turn-event-retry    .turn-event-detail { color: #8b7a40; }
+.turn-event-abort    { background: #1a0808; border: 1px solid #3a1010; }
+.turn-event-abort    .turn-event-label { color: #f87171; }
+.turn-event-abort    .turn-event-detail { color: #7a4040; }
+.turn-event-condensed { background: #0d1520; border: 1px solid #1a2a40; }
+.turn-event-condensed .turn-event-label { color: #60a5fa; }
+.turn-event-condensed .turn-event-detail { color: #4a6080; }
 
 /* ============================================================
    Conversation view

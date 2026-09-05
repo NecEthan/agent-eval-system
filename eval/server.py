@@ -63,6 +63,11 @@ def create_app(results_path: Path, harness_dir: Path | None = None) -> FastAPI:
                 "total_input_tokens": r.total_input_tokens,
                 "total_output_tokens": r.total_output_tokens,
                 "tool_call_count": len(r.tool_calls),
+                "model_used": r.model_used,
+                "failure_type": r.failure_type,
+                "context_condensations": r.context_condensations,
+                "retry_count": r.retry_count,
+                "control_flow_aborts": r.control_flow_aborts,
             }
             for i, r in enumerate(records)
         ]
