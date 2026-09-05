@@ -288,6 +288,38 @@ pre {
 }
 
 /* ============================================================
+   Compare view
+   ============================================================ */
+.cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.cmp-panel {
+  background: #131520; border: 1px solid #1e2235; border-radius: 10px; padding: 16px;
+}
+.cmp-section-label {
+  font-size: 10px; font-weight: 700; color: #4a4f70;
+  text-transform: uppercase; letter-spacing: 0.08em; margin: 16px 0 6px;
+}
+.cmp-run-title { font-size: 15px; font-weight: 600; color: #e8eaf6; }
+.cmp-run-sub { font-size: 12px; color: #4a4f70; margin-top: 2px; }
+.cmp-metric-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #1e2235; }
+.cmp-metric-row:last-child { border-bottom: none; }
+.cmp-metric-label { font-size: 12px; color: #4a4f70; }
+.cmp-metric-value { font-size: 13px; color: #c8cde8; font-weight: 500; }
+.cmp-better { color: #34d399 !important; }
+.cmp-worse  { color: #f87171 !important; }
+.cmp-eval-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #1e2235; }
+.cmp-eval-row:last-child { border-bottom: none; }
+.cmp-eval-cmd { font-family: monospace; font-size: 12px; color: #c8cde8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-eval-dur { font-size: 12px; color: #4a4f70; white-space: nowrap; }
+.cmp-empty { font-size: 12px; color: #2a2f4a; }
+.cmp-stop-final { color: #34d399; }
+.cmp-stop-tool  { color: #fbbf24; }
+.cmp-turn-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cmp-turn-table th { padding: 8px 12px; text-align: left; font-size: 10px; font-weight: 700; color: #4a4f70; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1e2235; }
+.cmp-turn-table td { padding: 8px 12px; color: #8b91b8; border-bottom: 1px solid #0d0f1a; }
+.cmp-turn-table tr:last-child td { border-bottom: none; }
+.row-selected td { background: #151030 !important; }
+
+/* ============================================================
    New Run form
    ============================================================ */
 .new-run-form {

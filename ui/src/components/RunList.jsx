@@ -13,13 +13,15 @@ const DEFAULT_FORM = {
   taskIdManual: false,
 };
 
-export default function RunList({ onSelect }) {
+export default function RunList({ onSelect, onCompare }) {
   const [runs, setRuns] = useState(null);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState(null);
   const [harnessConfigured, setHarnessConfigured] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(DEFAULT_FORM);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selected, setSelected] = useState([]);
   const pollRef = useRef(null);
 
   const loadRuns = () =>
@@ -105,6 +107,17 @@ export default function RunList({ onSelect }) {
     setRunError(null);
   };
 
+  const toggleCompareMode = () => {
+    setCompareMode(m => !m);
+    setSelected([]);
+  };
+
+  const toggleSelect = (index) => {
+    setSelected(s =>
+      s.includes(index) ? s.filter(i => i !== index) : s.length < 2 ? [...s, index] : s
+    );
+  };
+
   if (runs === null) return <div className="loading">Loading...</div>;
 
   const passed = runs.filter(r => r.eval_passed).length;
@@ -117,7 +130,24 @@ export default function RunList({ onSelect }) {
         <span className="header-sub">{runs.length} run{runs.length !== 1 ? 's' : ''}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {runError && <span style={{ color: '#f87171', fontSize: 12 }}>{runError}</span>}
-          {harnessConfigured && (
+          {runs.length >= 2 && (
+            compareMode ? (
+              <>
+                <button
+                  className="run-btn"
+                  style={{ background: selected.length === 2 ? '#7c6fff' : '#2a2855' }}
+                  disabled={selected.length !== 2}
+                  onClick={() => onCompare(selected)}
+                >
+                  Compare {selected.length}/2
+                </button>
+                <button className="back-btn" onClick={toggleCompareMode}>Cancel</button>
+              </>
+            ) : (
+              <button className="back-btn" onClick={toggleCompareMode}>⇄ Compare</button>
+            )
+          )}
+          {harnessConfigured && !compareMode && (
             running ? (
               <button className="run-btn run-btn-running" disabled>
                 <span className="run-spinner" /> Running…
@@ -232,7 +262,16 @@ export default function RunList({ onSelect }) {
               </thead>
               <tbody>
                 {runs.map((run) => (
-                  <tr key={run.index} onClick={() => onSelect(run.index)}>
+                  <tr
+                    key={run.index}
+                    onClick={() => compareMode ? toggleSelect(run.index) : onSelect(run.index)}
+                    className={compareMode && selected.includes(run.index) ? 'row-selected' : ''}
+                  >
+                    {compareMode && (
+                      <td style={{ width: 28, paddingRight: 0 }}>
+                        <input type="checkbox" readOnly checked={selected.includes(run.index)} style={{ cursor: 'pointer' }} />
+                      </td>
+                    )}
                     <td style={{ fontWeight: 600 }}>{run.task_id}</td>
                     <td>{run.agent_id}</td>
                     <td>
