@@ -42,7 +42,7 @@ pip install -e .
 
 ## Adding a task
 
-A task has two parts: a definition file and a starting codebase.
+A task has two parts: a definition file and a starting codebase. The codebase must include everything the agent needs — source files, test files, config — exactly as it would be at the start of the task.
 
 ```
 tasks/
@@ -80,10 +80,12 @@ cp -r /path/to/your/codebase/. tasks/your-task/repo/
 |---|---|
 | `id` | Unique task identifier. Used to group results. |
 | `description` | The prompt sent to the agent. |
-| `source_path` | Path to the starting codebase, relative to `task.json`. |
+| `source_path` | Path to the starting codebase, relative to `task.json`. Absolute paths also work. |
 | `evaluation.commands` | Commands run after the agent finishes. All must exit 0 to pass. |
 
 The `repo/` folder is gitignored — your codebase stays local.
+
+You can also create and run tasks directly from the web UI without touching the filesystem.
 
 ---
 
@@ -96,8 +98,7 @@ There are two ways to connect an agent.
 If your harness exposes the same HTTP API as [custom-harness](https://github.com/NecEthan/custom-harness) (`POST /run`, `GET /run/state`, `GET /health`), point `--harness-dir` at your repo:
 
 ```bash
-python -m eval.cli run tasks/your-task/task.json agent-v1 \
-    --harness-dir /path/to/your-harness
+python -m eval.cli run tasks/your-task/task.json agent-v1 --harness-dir /path/to/your-harness
 ```
 
 ### Option B — Custom adapter
@@ -129,7 +130,7 @@ class MyAdapter:
 |---|---|
 | `status` | `"completed"` — agent finished. `"failed"` — agent crashed. `"timeout"` — exceeded time limit. |
 | `duration` | Wall-clock seconds the agent ran. |
-| `logs` | Any runtime events you want to capture (can be empty). |
+| `logs` | List of event dicts from the agent run (can be empty). |
 | `error` | Error message if `status == "failed"`, otherwise `None`. |
 
 > `"completed"` does not mean the task succeeded — only that the agent finished running. The evaluator decides pass/fail.
@@ -137,8 +138,7 @@ class MyAdapter:
 Then run with your adapter:
 
 ```bash
-python -m eval.cli run tasks/your-task/task.json agent-v1 \
-    --adapter my_adapter.MyAdapter
+python -m eval.cli run tasks/your-task/task.json agent-v1 --adapter my_adapter.MyAdapter
 ```
 
 The adapter class must have a no-argument constructor. Configure it via environment variables or hardcoded defaults.
@@ -161,7 +161,6 @@ python -m eval.cli run <task.json> <agent-id> [options]
 | `--harness-dir` | Path to a custom-harness compatible repo (used when `--adapter` is not set) |
 | `--results` | Path to results file (default: `results.jsonl`) |
 | `--timeout` | Agent timeout in seconds (default: `300`) |
-| `--port` | Harness server port, built-in adapter only (default: auto-assigned) |
 
 **Example output:**
 
@@ -193,11 +192,18 @@ Every run appends a record to `results.jsonl`:
   "run_status": "completed",
   "run_duration": 14.2,
   "run_error": null,
-  "metrics": {
-    "tokens": 12450,
-    "turns": 8,
-    "tool_calls": 23
-  },
+  "total_input_tokens": 12450,
+  "total_output_tokens": 703,
+  "total_turns": 3,
+  "tool_calls": [
+    {"name": "read_file", "input": {"path": "src/auth.py"}, "is_error": false, "duration": 0.002}
+  ],
+  "model_used": "claude-haiku-4-5-20251001",
+  "system_prompt": "You are a coding agent...",
+  "failure_type": null,
+  "context_condensations": 0,
+  "retry_count": 0,
+  "control_flow_aborts": 0,
   "eval_passed": true,
   "eval_commands": [
     {"command": "python -m pytest tests/", "exit_code": 0, "passed": true, "duration": 3.1}
@@ -212,7 +218,10 @@ Query with `jq`:
 jq 'select(.agent_id == "my-agent-v1") | .eval_passed' results.jsonl | grep -c true
 
 # compare two agents on the same task
-jq 'select(.task_id == "your-task") | {agent_id, eval_passed, run_duration}' results.jsonl
+jq 'select(.task_id == "your-task") | {agent_id, eval_passed, run_duration, total_input_tokens}' results.jsonl
+
+# find all failed runs and why
+jq 'select(.eval_passed == false) | {task_id, agent_id, run_status, failure_type}' results.jsonl
 ```
 
 ### Viewing results
@@ -229,19 +238,25 @@ python -m eval.cli results --results path/to/results.jsonl
 
 ## Web UI
 
-Start the dashboard to browse runs, inspect turn timelines, and view per-run details:
+Start the dashboard to browse runs, inspect per-turn details, and compare agents:
 
 ```bash
+# view results only
 python -m eval.cli serve --port 7001
+
+# enable Run button (requires a harness)
+python -m eval.cli serve --port 7001 --harness-dir /path/to/your-harness
 ```
 
-Opens a React app at `http://localhost:7001`. The UI reads from `results.jsonl` and shows:
+Opens a React app at `http://localhost:7001`.
 
-- Run list with pass/fail, duration, and metrics
-- Per-run detail view with evaluation command output
-- Turn timeline and conversation view for harness-based runs
+**Features:**
 
-The server also exposes a REST API at `/api/runs`.
+- Run list — pass/fail, duration, token usage, turn count per run
+- Run detail — metrics, eval command output, per-turn conversation timeline
+- Conversation view — system prompt, messages sent to LLM, LLM response, tool calls with input/output, inline indicators for retries, context condensation, and control flow aborts
+- Compare view — select any two runs and see metrics side by side with better/worse highlighting
+- New Run form — create a task and start a run directly from the UI (requires `--harness-dir`)
 
 ---
 
@@ -263,7 +278,7 @@ agent-eval-system/
 │       └── custom_harness.py # Built-in adapter for custom-harness
 ├── ui/                       # React web dashboard (Vite)
 │   └── src/
-│       └── components/       # RunList, RunDetail, TurnTimeline, ConversationView
+│       └── components/       # RunList, RunDetail, ConversationView, CompareView
 └── tasks/
     └── fix-off-by-one/       # Example task
         └── task.json
